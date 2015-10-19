@@ -1,21 +1,888 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-	<title>kz_editor</title>
-	<meta charset="utf-8">
-	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-    <link rel="stylesheet" type="text/css" href="css/main.css">
-
+    <title>editor kubanzsk</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+    <link rel=stylesheet href="css/base.css"/>
+    <link rel=stylesheet href="css/jquery-ui.css" />
+    <link rel=stylesheet href="css/info.css"/>
+    <link rel=stylesheet href="css/Jcrop.css"/>
 </head>
+<style type="text/css">
+
+    /* Apply these styles only when #preview-pane has
+       been placed within the Jcrop widget */
+    .jcrop-holder #preview-pane {
+        display: block;
+        position: absolute;
+        z-index: 2000;
+        top: 10px;
+        right: -280px;
+        padding: 6px;
+        border: 1px rgba(0,0,0,.4) solid;
+        background-color: white;
+
+        -webkit-border-radius: 6px;
+        -moz-border-radius: 6px;
+        border-radius: 6px;
+
+        -webkit-box-shadow: 1px 1px 5px 2px rgba(0, 0, 0, 0.2);
+        -moz-box-shadow: 1px 1px 5px 2px rgba(0, 0, 0, 0.2);
+        box-shadow: 1px 1px 5px 2px rgba(0, 0, 0, 0.2);
+    }
+
+    /* The Javascript code will set the aspect ratio of the crop
+       area based on the size of the thumbnail preview,
+       specified here */
+    #preview-pane .preview-container {
+        width: 250px;
+        height: 170px;
+        overflow: hidden;
+    }
+
+</style>
+
 <body>
 
-    <script src="js/libs/three.min.js"></script>
+<script src="js/libs/all/Three.js"></script>
+<script src="js/libs/all/Detector.js"></script>
+<script src="js/libs/all/Stats.js"></script>
+<script src="js/libs/all/OrbitControls.js"></script>
+<script src="js/libs/all/Projector.js"></script>
+<script src="js/libs/all/THREEx.KeyboardState.js"></script>
+<script src="js/libs/all/THREEx.FullScreen.js"></script>
+<script src="js/libs/all/THREEx.WindowResize.js"></script>
 
-    <script src="js/libs/controls/TrackballControls.js"></script>
+<script src="js/create/painting.js"></script>
 
-    <script src="js/libs/stats.min.js"></script>
+<script type='text/javascript' src='js/libs/all/DAT.GUI.min.js'></script>
 
-    <script src="js/main.js"></script>
+<!-- jQuery code to display an information button and box when clicked. -->
+<script src="js/libs/all/jquery-1.9.1.js"></script>
+<script src="js/libs/all/jquery-ui.js"></script>
+<!-- Cropper -->
+<script src="js/libs/all/Jcrop.js"></script>
+<!-- ------------------------------------------------------------ -->
+
+<div id="ThreeJS" style="position: absolute; left:0px; top:0px; "></div>
+
+<script>
+    // standard global variables
+    var back_light;
+    var mouse = new THREE.Vector2();
+    var container, scene, camera, renderer, controls, stats;
+    var keyboard = new THREEx.KeyboardState();
+    var clock = new THREE.Clock();
+    var objects = [];
+    var floor, backWall, roof, leftWall, rightWall;
+    var sha, rail;
+    var roomHeight = 2500, roomHeightMin = 2200, roomHeightMax = 3500;
+    var roomWidth = 5000, roomWidthMin = 2000, roomWidthMax = 7000;
+    var roomLength = 1500, roomLengthMin = 1000, roomLengthMax = 5000;
+    var fromBackWall = 600, fromBackWallLengthMin = 0, fromBackWallLengthMax = 800;
+    var cupboardWidth = 2500;
+    var maxDoorsNumber = 5, curDoorsNumber = 5;
+    var shaThickness = 1;
+    var shaSize = 40;
+    var shaPts = [];
+    var handlePts = [];
+    var railsLength = 80;
+    var railsHeigth = 8;
+    var railsDepth = 2;
+    var weelLength = 15;
+    var weelFromAcis = 10;
+    var railsPts = [];
+    var INTERSECTED, SELECTED;
+    var firstDoor, secondDoor, thirdDoor, fourDoor, fiveDoor, sixDoor;
+    var doors = [];
+    var scheme = [];
+    var handle;
+    var starkLen = 33;
+    var starkWid = 26;
+    var curImgUrl = "images/zakat.jpg";
+    var cropPlane;
+    var jcrop_api,
+            boundx,
+            boundy;
+
+
+    // custom global variables
+    var cube;
+    var parameters;
+    var gui;
+
+    init();
+    animate();
+
+    // FUNCTIONS
+    function init()
+    {
+        // SCENE
+        scene = new THREE.Scene();
+        // CAMERA
+        var SCREEN_WIDTH = window.innerWidth, SCREEN_HEIGHT = window.innerHeight;
+        var VIEW_ANGLE = 45, ASPECT = SCREEN_WIDTH / SCREEN_HEIGHT, NEAR = 0.1, FAR = 20000;
+        camera = new THREE.PerspectiveCamera( VIEW_ANGLE, ASPECT, NEAR, FAR);
+        scene.add(camera);
+        camera.position.set(0,0,3*roomWidth/4);
+        camera.lookAt(scene.position);
+        // RENDERER
+        if ( Detector.webgl )
+            renderer = new THREE.WebGLRenderer( { antialias :true, preserveDrawingBuffer : true} );
+        else
+            renderer = new THREE.CanvasRenderer();
+        renderer.setSize(SCREEN_WIDTH, SCREEN_HEIGHT);
+        renderer.setClearColor( 0xffffff, 1);
+        renderer.domElement.addEventListener( 'dblclick', onDocumentMouseDown, false );
+        renderer.shadowMapEnabled = true;
+
+        container = document.getElementById( 'ThreeJS' );
+        container.appendChild( renderer.domElement );
+        // EVENTS
+        THREEx.WindowResize(renderer, camera);
+        THREEx.FullScreen.bindKey({ charCode : 'm'.charCodeAt(0) });
+        // CONTROLS
+        controls = new THREE.OrbitControls( camera, renderer.domElement );
+        controls.myPan(0, 280);
+        // STATS
+        stats = new Stats();
+        stats.domElement.style.position = 'absolute';
+        stats.domElement.style.bottom = '0px';
+        stats.domElement.style.zIndex = 100;
+        container.appendChild( stats.domElement );
+        // LIGHTS
+        var ambLight = new THREE.AmbientLight(0xffffff);
+        ambLight.position.set(0, roomHeight, 1000);
+        scene.add(ambLight);
+
+        back_light = new THREE.PointLight(0xffffff, 0.1);
+        back_light.position.set(0, roomHeight, 10000);
+        scene.add(back_light);
+
+        // ROOF and FLOOR
+        floor = MyPlane("floor",'images/ground7.jpg', roomWidth, roomHeight, roomLength);
+        roof = MyPlane("roof", 'images/ground12.jpg', roomWidth, roomHeight, roomLength);
+        // WALLS
+        var walls = [];
+        var initWall = 'images/ground15.jpg';
+        backWall = new MyPlane("back",initWall, roomWidth, roomHeight, roomLength);
+        leftWall = new MyPlane("left", initWall, roomWidth, roomHeight, roomLength);
+        rightWall = new MyPlane("right", initWall, roomWidth, roomHeight, roomLength);
+        walls.push(backWall);
+        walls.push(leftWall);
+        walls.push(rightWall);
+        // axis
+        var axes = new THREE.AxisHelper( 4000 );
+        scene.add(axes);
+
+        {
+            shaPts.push(new THREE.Vector2(shaThickness / 2, 0));
+            shaPts.push(new THREE.Vector2(shaThickness / 2, shaSize));
+            shaPts.push(new THREE.Vector2(shaSize + shaThickness / 2, shaSize));
+            shaPts.push(new THREE.Vector2(shaSize + shaThickness / 2, 0));
+            shaPts.push(new THREE.Vector2(shaSize + 3 * shaThickness / 2, 0));
+            shaPts.push(new THREE.Vector2(shaSize + 3 * shaThickness / 2, shaSize + shaThickness));
+            shaPts.push(new THREE.Vector2(-(shaSize + 3 * shaThickness / 2), shaSize + shaThickness));
+            shaPts.push(new THREE.Vector2(-(shaSize + 3 * shaThickness / 2), 0));
+            shaPts.push(new THREE.Vector2(-(shaSize + shaThickness / 2), 0));
+            shaPts.push(new THREE.Vector2(-(shaSize + shaThickness / 2), shaSize + shaThickness / 2));
+            shaPts.push(new THREE.Vector2(-(shaThickness / 2), shaSize + shaThickness / 2));
+            shaPts.push(new THREE.Vector2(-(shaThickness / 2), 0));
+            shaPts.push(new THREE.Vector2(shaThickness / 2, 0));
+        }
+
+        for( var i = 0; i < shaPts.length; i ++ ) shaPts[ i ].multiplyScalar( 1 );
+
+        var shaShape = new THREE.Shape( shaPts );
+
+        var extrudeSettings = { amount: 1, bevelEnabled: true, bevelSegments: 0, steps: 1, bevelSize: 0, bevelThickness: 0 };
+
+        sha = addShape( shaShape,  extrudeSettings, cupboardWidth, 0xf080ff, -cupboardWidth/2, roomHeight-(shaSize+shaThickness), fromBackWall, 0, Math.PI/2, 0, 1 );
+
+        {
+            railsPts.push(new THREE.Vector2(railsLength / 2, 0));
+            railsPts.push(new THREE.Vector2(railsLength * 7 / 16, railsHeigth * 0.8));
+            railsPts.push(new THREE.Vector2(railsLength * 3 / 8, railsHeigth));
+            railsPts.push(new THREE.Vector2(weelFromAcis + weelLength, railsHeigth));
+            railsPts.push(new THREE.Vector2(weelFromAcis + weelLength, railsDepth));
+            railsPts.push(new THREE.Vector2(weelFromAcis, railsDepth));
+            railsPts.push(new THREE.Vector2(weelFromAcis, railsHeigth));
+            railsPts.push(new THREE.Vector2(-weelFromAcis, railsHeigth));
+            railsPts.push(new THREE.Vector2(-weelFromAcis, railsDepth));
+            railsPts.push(new THREE.Vector2(-(weelFromAcis + weelLength), railsDepth));
+            railsPts.push(new THREE.Vector2(-(weelFromAcis + weelLength), railsHeigth));
+            railsPts.push(new THREE.Vector2(-railsLength * 3 / 8, railsHeigth));
+            railsPts.push(new THREE.Vector2(-railsLength * 7 / 16, railsHeigth * 4 / 5));
+            railsPts.push(new THREE.Vector2(-railsLength / 2, 0));
+            railsPts.push(new THREE.Vector2(railsLength / 2, 0));
+        }
+
+        for( var i = 0; i < railsPts.length; i ++ ) railsPts[ i ].multiplyScalar( 1 );
+
+        var railsShape = new THREE.Shape( railsPts );
+
+        rail = addShape( railsShape,  extrudeSettings, cupboardWidth, 0xf080ff, -cupboardWidth/2, 0, fromBackWall, 0, Math.PI/2, 0, 1 );
+
+        // handle
+        {
+            handlePts.push(new THREE.Vector2(starkWid/2, 0));
+            handlePts.push(new THREE.Vector2(starkWid/2, 2/5*starkLen));
+            handlePts.push(new THREE.Vector2(7/10*starkWid/2, 8/10*starkLen));
+            handlePts.push(new THREE.Vector2(4/9*starkWid/2, 9/10*starkLen));
+            handlePts.push(new THREE.Vector2(-starkWid/10, starkLen));
+            handlePts.push(new THREE.Vector2(-17/20*starkWid/2, 39/40*starkLen));
+            handlePts.push(new THREE.Vector2(-starkWid/2, 37/40*starkLen));
+            handlePts.push(new THREE.Vector2(-79/80*starkWid/2, 35/40*starkLen));
+            handlePts.push(new THREE.Vector2(-9/10*starkWid/2, 36/40*starkLen));
+            handlePts.push(new THREE.Vector2(-30/40*starkWid/2, 75/80*starkLen));
+            handlePts.push(new THREE.Vector2(-20/40*starkWid/2, 76/80*starkLen));
+            handlePts.push(new THREE.Vector2(-10/40*starkWid/2, 73/80*starkLen));
+            handlePts.push(new THREE.Vector2(-3/40*starkWid/2, 65/80*starkLen));
+            handlePts.push(new THREE.Vector2(-2/40*starkWid/2, 60/80*starkLen));
+            handlePts.push(new THREE.Vector2(-1/40*starkWid/2, 55/80*starkLen));
+            handlePts.push(new THREE.Vector2(0/40*starkWid/2, 47/80*starkLen));
+            handlePts.push(new THREE.Vector2(-2/40*starkWid/2, 42/80*starkLen));
+            handlePts.push(new THREE.Vector2(-7/40*starkWid/2, 38/80*starkLen));
+            handlePts.push(new THREE.Vector2(-15/40*starkWid/2, 33/80*starkLen));
+            handlePts.push(new THREE.Vector2(-25/40*starkWid/2, 30/80*starkLen));
+            handlePts.push(new THREE.Vector2(-39/40*starkWid/2, 31/80*starkLen));
+            handlePts.push(new THREE.Vector2(-starkWid/2, 30/80*starkLen));
+            handlePts.push(new THREE.Vector2(-starkWid/2, 0));
+            handlePts.push(new THREE.Vector2(starkWid/2, 0));
+        }
+        // Doors
+        Doors(curDoorsNumber);
+
+        gui = new dat.GUI();
+
+        var parameters =
+        {
+            height: roomHeight, // numeric
+            width: roomWidth,
+            length: roomLength,
+            fromBackWallLength: fromBackWall,
+            cbWidth: cupboardWidth,
+            pDoors: curDoorsNumber,
+            profColor: "...",
+            curImage: "...", // numeric slider
+            c: "Hello, GUI!", // string
+            e: "#ff8800", // color (hex)
+            f: function() { alert("Hello!") },
+            g: function() { alert( parameters.c ) },
+            print: function() { screenShot() },
+            wallDecoration: "...", // dummy value, only type is important
+            roofDecoration: "...",
+            floorDecoration: "...",
+            x: 0, y: 0, z: 0
+        };
+
+        // gui.add( parameters )
+        var size = gui.addFolder('Размеры комнаты');
+        var height = size.add( parameters, 'height' ).min(roomHeightMin).max(roomHeightMax).step(20).name('высота');
+        height.onChange(function(value){
+            roomHeight = value;
+            roof.plane.position.y = roomHeight;
+            updateGeometry(walls, 1);
+            sha.position.set(-cupboardWidth/2, roomHeight-(shaSize+shaThickness), fromBackWall);
+            Doors(curDoorsNumber);
+        });
+
+
+        var width = size.add( parameters, 'width' ).min(roomWidthMin).max(roomWidthMax).step(20).name('ширина');
+        width.onChange(function(value){
+            roomWidth = value;
+            updateGeometry(walls, 1);
+            updateGeometry(floor, 0);
+            updateGeometry(roof, 0);
+        });
+
+
+        var length = size.add (parameters, "length").min(roomLengthMin).max(roomLengthMax).step(20).name("глубина");
+        length.onChange(function(value){
+            roomLength = value;
+            updateGeometry(walls, 1);
+            updateGeometry(floor, 0);
+            updateGeometry(roof, 0);
+        });
+
+        var decoration = gui.addFolder('Оформление комнаты');
+
+        var roofDecorationList = [];
+        roofDecorationList.push({name: "Светлое дерево", url: "images/ground7.jpg"});
+        roofDecorationList.push({name: "Темное дерево", url: "images/ground11.jpg"});
+        roofDecorationList.push({name: "Обои белые", url: "images/ground14.jpg"});
+        var stringListRoofName = [];
+        for (var index = 0; index < roofDecorationList.length; index++ ) {
+            stringListRoofName.push(roofDecorationList[index].name);
+        }
+
+        var roofDecoration = decoration.add( parameters, 'roofDecoration', stringListRoofName ).name('потолок');
+        roofDecoration.onChange(function(value){
+
+        });
+
+        var wallDecorationList = [];
+        wallDecorationList.push({name: "Светлое дерево", url: "images/ground7.jpg"});
+        wallDecorationList.push({name: "Темное дерево", url: "images/ground11.jpg"});
+        wallDecorationList.push({name: "Обои белые", url: "images/ground14.jpg"});
+        var stringListWallName = [];
+        for (var index = 0; index < wallDecorationList.length; index++ ) {
+            stringListWallName.push(wallDecorationList[index].name);
+        }
+        var wallDecoration = decoration.add( parameters, 'wallDecoration', stringListWallName ).name('стены');
+        wallDecoration.onChange(function(value){
+            for (var index = 0; index < wallDecorationList.length; index++ ) {
+                if (wallDecorationList[index].name == value) {
+                    for (var i = 0; i < walls.length; i++ ) {
+                        scene.remove(walls[i].plane);
+                        var newPlane = new MyPlane(walls[i].type,wallDecorationList[index].url,
+                                roomWidth, roomHeight, roomLength);
+                        walls[i] = newPlane;
+                        scene.add(walls[i].plane);
+                    }
+                    break;
+                }
+            }
+        });
+
+        var floorDecorationList = [];
+        floorDecorationList.push({name: "Светлое дерево", url: "images/ground7.jpg"});
+        floorDecorationList.push({name: "Темное дерево", url: "images/ground11.jpg"});
+        floorDecorationList.push({name: "Обои белые", url: "images/ground14.jpg"});
+        var stringListFloorName = [];
+        for (var index = 0; index < floorDecorationList.length; index++ ) {
+            stringListFloorName .push(floorDecorationList[index].name);
+        }
+
+        var floorDecoration = decoration.add( parameters, 'floorDecoration', stringListFloorName  ).name('пол');
+        floorDecoration.onChange(function(value){
+
+        });
+
+
+        var cupBoard = gui.addFolder('Размер и положение шкафа');
+        var fromBackWallLength = cupBoard.add (parameters, "fromBackWallLength").min(fromBackWallLengthMin).max(fromBackWallLengthMax).step(20).name("от стены");
+        fromBackWallLength.onChange(function(value){
+            fromBackWall = value;
+            rail.position.set(-cupboardWidth/2, 0, fromBackWall);
+            sha.position.set(-cupboardWidth/2, roomHeight-(shaSize+shaThickness), fromBackWall);
+            setDoorsPosition();
+        });
+
+        var cbWidth = cupBoard.add (parameters, "cbWidth").min(1000).max(5000).step(100).name("ширина шкафа ");
+        cbWidth.onChange(function(value){
+            cupboardWidth = value;
+            scene.remove(sha);
+            scene.remove(rail);
+            sha = addShape( shaShape,  extrudeSettings, cupboardWidth, 0xf080ff, -cupboardWidth/2, roomHeight-(shaSize+shaThickness), fromBackWall, 0, Math.PI/2, 0, 1 );
+            rail = addShape( railsShape,  extrudeSettings, cupboardWidth,0xf080ff, -cupboardWidth/2, 0, fromBackWall, 0, Math.PI/2, 0, 1 );
+            scene.add(sha);
+            scene.add(rail);
+            Doors(curDoorsNumber);
+        });
+
+        var pDoors = gui.addFolder('Двери');
+        var doorAmounts = [];
+        for (var j = 2; j <= maxDoorsNumber; j++) {
+            doorAmounts.push(j);
+        }
+        var doorAmount = pDoors.add(parameters, 'pDoors', doorAmounts).name('Количество');
+        doorAmount.onChange(function(value){
+            curDoorsNumber = value;
+            Doors(curDoorsNumber);
+        });
+
+        var profileColor = [];
+        profileColor.push({name: "белый", url: "images/ground7.jpg"});
+        profileColor.push({name: "серый", url: "images/ground11.jpg"});
+        profileColor.push({name: "золотой", url: "images/ground14.jpg"});
+        var stringProfileColorName = [];
+        for (var index = 0; index < profileColor.length; index++ ) {
+            stringProfileColorName.push(profileColor[index].name);
+        }
+
+        var profColor = pDoors.add( parameters, 'profColor', stringProfileColorName ).name('цвет профиля');
+        profColor.onChange(function(value){
+
+        });
+
+        var pImage = gui.addFolder('Рисунок');
+        var imgList = [];
+        imgList.push({name: "Виноград", url: "images/grape.jpg"});
+        imgList.push({name: "Рассвет", url: "images/zakat.jpg"});
+        imgList.push({name: "Закат", url: "images/zakat2.jpg"});
+        imgList.push({name: "Дельфин", url: "images/dolfin.jpg"});
+        imgList.push({name: "Большая", url: 'images/big.jpg'});
+        var pImageNameList = [];
+        for (var m =0; m < imgList.length; m++) {
+            pImageNameList.push(imgList[m].name);
+        }
+        var curImg = pImage.add(parameters, "curImage", pImageNameList).name('изображение');
+        curImg.onChange(function(value){
+            for (var ix = 0; ix < imgList.length; ix++ ) {
+                if (imgList[ix].name == value) {
+                    var x = $("img[src$='"+curImgUrl+"']");
+                    curImgUrl = imgList[ix].url;
+                    console.log(x);
+                    x.attr("src", curImgUrl);
+                    Doors(curDoorsNumber);
+                }
+            }
+        });
+
+        pImage.open();
+
+        var exElem = getElementByXpath('//li[text()="Рисунок"]');
+        $("<li style='height: 200px; z-index:1000'>" +
+                "<img src='images/zakat.jpg' id='target' alt='[Jcrop Example]' height='201' width='231' />" +
+        "</li>").appendTo(exElem.parentElement);
+
+        gui.add( parameters, 'print' ).name("Снимок в новом окне");
+
+        gui.open();
+    }
+
+    jQuery(function($){
+
+        // Create variables (in this scope) to hold the API and image size
+
+
+        // Grab some information about the preview pane
+                var
+                $pcnt = $('#preview-pane .preview-container'),
+                $pimg = $('#preview-pane .preview-container img'),
+                xsize = $pcnt.width(),
+                ysize = $pcnt.height();
+
+        $('#target').Jcrop({
+            onChange: updatePreview,
+            onSelect: updatePreview,
+            aspectRatio: xsize / ysize
+        },function(){
+            // Use the API to get the real image size
+            var bounds = this.getBounds();
+            boundx = bounds[0];
+            boundy = bounds[1];
+            // Store the API in the jcrop_api variable
+            jcrop_api = this;
+
+            // Move the preview into the jcrop container for css positioning
+        });
+
+        function updatePreview(c)
+        {
+            cropPlane = c;
+            Doors(curDoorsNumber);
+        };
+    });
+
+
+    function Doors(curNumDoors) {
+        for (var k = 0; k < doors.length; k++) {
+            scene.remove(doors[k].userData.lHandle);
+            scene.remove(doors[k].userData.rHandle);
+            scene.remove(doors[k]);
+        }
+        doors = [];
+        objects = [];
+        if (curNumDoors == 2) {
+            {
+                firstDoor = new MyDoor(-1, -1, 1); // back, left, num
+                secondDoor = new MyDoor(1, 1, 2); // front, right, num
+
+                objects.push(firstDoor);
+                objects.push(secondDoor);
+
+                doors.push(firstDoor);
+                doors.push(secondDoor);
+            }
+            scheme = [];
+            scheme.push([1, 0]);
+            scheme.push([0, 1]);
+        } else if (curNumDoors == 3) {
+            {
+                firstDoor = new MyDoor(-1, -1, 1);
+                secondDoor = new MyDoor(1, -1, 2);
+                thirdDoor = new MyDoor(-1, 1, 3);
+
+                objects.push(firstDoor);
+                objects.push(secondDoor);
+                objects.push(thirdDoor);
+
+                doors.push(firstDoor);
+                doors.push(secondDoor);
+                doors.push(thirdDoor);
+            }
+            scheme = [];
+            scheme.push([1, 0, 3]);
+            scheme.push([0, 2, 0]);
+        } else if (curNumDoors == 4) {
+            {
+                firstDoor = new MyDoor(-1, -1, 1);
+                secondDoor = new MyDoor(1, -1, 2);
+                thirdDoor = new MyDoor(-1, 1, 3);
+                fourDoor = new MyDoor(1, 1, 4);
+
+                objects.push(firstDoor);
+                objects.push(secondDoor);
+                objects.push(thirdDoor);
+                objects.push(fourDoor);
+
+                doors.push(firstDoor);
+                doors.push(secondDoor);
+                doors.push(thirdDoor);
+                doors.push(fourDoor);
+            }
+            scheme = [];
+            scheme.push([1, 0, 1, 0]);
+            scheme.push([0, 1, 0, 1]);
+        } else if (curNumDoors == 5) {
+            {
+                firstDoor = new MyDoor(-1, -1, 1);
+                secondDoor = new MyDoor(1, -1, 2);
+                thirdDoor = new MyDoor(-1, -1, 3);
+                fourDoor = new MyDoor(1, 1, 4);
+                fiveDoor = new MyDoor(-1, 1, 5);
+
+                objects.push(firstDoor);
+                objects.push(secondDoor);
+                objects.push(thirdDoor);
+                objects.push(fourDoor);
+                objects.push(fiveDoor);
+
+                doors.push(firstDoor);
+                doors.push(secondDoor);
+                doors.push(thirdDoor);
+                doors.push(fourDoor);
+                doors.push(fiveDoor);
+            }
+            scheme = [];
+            scheme.push([1, 0, 1, 0, 1]);
+            scheme.push([0, 1, 0, 1, 0]);
+        }  else if (curNumDoors == 6) {
+            firstDoor = new MyDoor(-1, -1, 1);
+            secondDoor = new MyDoor(1, -1, 2);
+            thirdDoor = new MyDoor(-1, -1, 3);
+            fourDoor = new MyDoor(1, 1, 4);
+            fiveDoor = new MyDoor(-1, 1, 5);
+            sixDoor = new MyDoor(1, 1, 6);
+
+            objects.push(firstDoor);
+            objects.push(secondDoor);
+            objects.push(thirdDoor);
+            objects.push(fourDoor);
+            objects.push(fiveDoor);
+            objects.push(sixDoor);
+
+            doors.push(firstDoor);
+            doors.push(secondDoor);
+            doors.push(thirdDoor);
+            doors.push(fourDoor);
+            doors.push(fiveDoor);
+            doors.push(sixDoor);
+        }
+        scheme = [];
+        scheme.push([1, 0, 1, 0, 1, 0]);
+        scheme.push([0, 1, 0, 1, 0, 1]);
+    }
+
+    function setTex(tex, doorNumber) {
+        tex.repeat.x = 1 / curDoorsNumber;
+        tex.offset.x = ( doorNumber - 1) * ( tex.repeat.x);
+    }
+
+    function MyDoor(frontBack, rightLeft, number) {
+        {
+            /////// draw image on canvas /////////
+
+             // create a canvas element
+             THREE.ImageUtils.crossOrigin = '';
+
+        var canvas = document.createElement('canvas');
+        var context = canvas.getContext('2d');
+        // canvas contents will be used for a texture
+        var tex = new THREE.Texture(canvas);
+            THREE.LinearFilter = THREE.NearestFilter = tex.minFilter;
+
+        // load an image
+        var imageObj = new Image();
+            imageObj.crossOrigin = "anonymous";
+
+        // after the image is loaded, this function executes
+
+        imageObj.onload = function()
+        {
+            console.log(imageObj.width);
+            var wscale = imageObj.width/231;
+            var hscale = imageObj.height/201;
+            var sourceX = cropPlane ? cropPlane.x*wscale : 0;
+            var sourceY = cropPlane ? cropPlane.y*hscale : 0;
+            var sourceWidth =  cropPlane ? cropPlane.w*cupboardWidth/800*wscale*2.6 : 231*cupboardWidth/800*wscale*2.6;
+            var sourceHeight = cropPlane ? cropPlane.h*roomHeight/529*hscale*3.5 : 201*roomHeight/529*hscale*3.5;
+            var destX =  0;
+            var destY =  0;
+            var destWidth = cupboardWidth;
+            var destHeight = roomHeight ;
+            context.drawImage(imageObj, sourceX, sourceY, sourceWidth, sourceHeight, destX, destY, destWidth, destHeight);
+            if ( tex ) // checks if texture exists
+                tex.needsUpdate = true;
+        };
+            imageObj.src = curImgUrl;
+        }
+        console.log(tex);
+        //var tex = THREE.ImageUtils.loadTexture( curImgUrl);
+        setTex(tex, number);
+        var planeMaterial = new THREE.MeshPhongMaterial(
+                {map: tex, color: 0xdddddd, specular: 0x009900, shininess: 10, shading: THREE.SmoothShading } );
+        var planeGeometry = new THREE.PlaneGeometry(cupboardWidth/curDoorsNumber, roomHeight);
+        var door = new THREE.Mesh(planeGeometry, planeMaterial);
+        door.material.side = THREE.DoubleSide;
+        door.userData = {number : number, cell: number, rightLeft : rightLeft, frontBack : frontBack, isMove : 0, x : door.position.x};
+        doorPosition(door);
+
+        for( var i = 0; i < handlePts.length; i ++ ) handlePts[ i ].multiplyScalar( 1 );
+        var handleShape = new THREE.Shape( handlePts );
+        var extrudeSettings = { amount: 1, bevelEnabled: true, bevelSegments: 0, steps: 1, bevelSize: 0, bevelThickness: 0 };
+        var leftX = door.position.x - cupboardWidth/(2*curDoorsNumber);
+        var rightX = door.position.x + cupboardWidth/(2*curDoorsNumber);
+        var y = roomHeight;
+        var z = door.position.z;
+
+        door.userData.rHandle = addShape( handleShape,  extrudeSettings, roomHeight ,0xf080ff, rightX, y, z, Math.PI/2, 0, 0, 1 );;
+        door.userData.lHandle = addShape( handleShape,  extrudeSettings, roomHeight,0xf080ff, leftX, 0, z, Math.PI/2, Math.PI, 0, 1 );;
+
+        scene.add(door);
+        return door;
+    }
+
+    function Position(door) {
+        var position, notCenter = 1;
+        var ud = door.userData;
+        if (curDoorsNumber == 2) {
+            position = 4;
+        } else if (curDoorsNumber == 3) {
+            position = 3;
+            if (ud.number == 2) {
+                notCenter = 0;
+            }
+        } else if (curDoorsNumber == 4) {
+            if (ud.number == 1 || ud.number == 4 ) {
+                position = 8/3;
+            } else
+                position = 24/3;
+        } else if (curDoorsNumber == 5) {
+            position = 1;
+            if (ud.number == 1 || ud.number == 5) {
+                position = 15/6;
+            } else {
+                position = 120/24;
+            }
+            if (ud.number == 3) {
+                notCenter = 0;
+            }
+        } else if (curDoorsNumber == 6) {
+            position = 1;
+            if (ud.number == 1 || ud.number == 6) {
+                position = 229/96;
+            } else if (ud.number == 2 || ud.number == 5 ){
+                position = 96 / 24;
+            } else if (ud.number == 3 || ud.number == 4) {
+                notCenter = 0;
+            }
+        }
+        return {
+            position : position,
+            notCenter : notCenter
+        }
+    }
+
+    function doorPosition(door) {
+        var ud = door.userData;
+        var geom = Position(door);
+        var x = geom.notCenter*ud.rightLeft*cupboardWidth/geom.position;
+        var y = roomHeight/2;
+        var z = fromBackWall+ud.frontBack*shaSize/2;
+        door.position.set(x, y, z);
+    }
+
+    function runDoor() {
+        var speed = 20;
+        for (var k = 0; k < doors.length; k++) {
+            var ud = doors[k].userData;
+            if (ud.isMove) {
+                var cond = (Math.abs(doors[k].position.x - doors[k].userData.x) < (cupboardWidth / curDoorsNumber) -speed);
+                if (cond) {
+                    doors[k].translateX(speed * ud.direction);
+                    ud.lHandle.translateX(-speed * ud.direction);
+                    ud.rHandle.translateX(speed * ud.direction);
+                } else {
+                    ud.isMove = 0;
+                    ud.direction *= -1;
+                }
+            }
+        }
+    }
+
+    function setDoorsPosition() {
+        for (var k = 0; k < doors.length; k++) {
+            doors[k].userData.lHandle.translateY(fromBackWall-doors[k].userData.lHandle.position.z);
+            doors[k].userData.rHandle.translateY(fromBackWall-doors[k].userData.rHandle.position.z);
+            doorPosition(doors[k]);
+        }
+    }
+
+    function MyPlane(type, texture, width, height, length )
+    {
+        var this_height = (type == "roof" || type == "floor") ? length : height;
+        var this_width = (type == "left" || type == "right") ? length : width;
+
+        var planeTexture = new THREE.ImageUtils.loadTexture( texture );
+        planeTexture.wrapS = planeTexture.wrapT = THREE.RepeatWrapping;
+        planeTexture.repeat.set( 10, 10*this_height/width );
+        var planeMaterial = new THREE.MeshPhongMaterial( { map: planeTexture } );
+        var planeGeometry = new THREE.PlaneGeometry(this_width, this_height , 10, 10*this_height/width);
+        plane = new THREE.Mesh(planeGeometry, planeMaterial);
+        if (type == "back") {
+            plane.position.y = height/2;
+        } else if (type == "floor") {
+            plane.rotation.x = -Math.PI / 2;
+            plane.position.z = length/2;
+        } else if (type == "roof") {
+            plane.rotation.x = Math.PI / 2;
+            plane.position.z = length / 2;
+            plane.position.y = height;
+        } else if (type == "left") {
+            plane.rotation.y = Math.PI / 2;
+            plane.position.x = -width/2;
+            plane.position.y = height/2;
+            plane.position.z = length/2;
+        } else if (type == "right") {
+            plane.rotation.y = -Math.PI / 2;
+            plane.position.x = width/2;
+            plane.position.y = height/2;
+            plane.position.z = length/2;
+        }
+        scene.add(plane);
+        return {
+            plane : plane,
+            type : type
+        };
+    }
+
+    function updateGeometry(walls, many) {
+        if ( many) {
+            for (var index = 0; index < walls.length; index++) {
+                scene.remove(walls[index].plane);
+                var newPlane = new MyPlane(walls[index].type, walls[index].plane.material.map.sourceFile,
+                        roomWidth, roomHeight, roomLength);
+                walls[index] = newPlane;
+                scene.add(walls[index].plane);
+            }
+        } else if ( !many) {
+            scene.remove(walls.plane);
+            var newPlane = new MyPlane(walls.type, walls.plane.material.map.sourceFile,
+                    roomWidth, roomHeight, roomLength);
+            if (walls.type == "floor") {
+                floor = newPlane;
+                scene.add(floor.plane);
+            } else if (walls.type == "roof") {
+                roof = newPlane;
+                scene.add(roof.plane);
+            }
+        }
+    }
+
+    function addShape( shape, extrudeSettings, length, color, x, y, z, rx, ry, rz, s ) {
+        // 3d shape
+        var geometry = new THREE.ExtrudeGeometry( shape, extrudeSettings );
+
+        var mesh = new THREE.Mesh( geometry, new THREE.MeshPhongMaterial( { color: 0xdddd77, specular: 0x009900, shininess: 80, shading: THREE.SmoothShading, emissive: 0x111111 } ) );
+        mesh.position.set( x, y, z );
+        mesh.rotation.set( rx, ry, rz );
+        mesh.scale.set( s, s, length );
+        scene.add( mesh );
+        return mesh;
+    }
+
+    function onDocumentMouseDown( event ) {
+
+        var raycaster = new THREE.Raycaster(); // create once
+        var mouse = new THREE.Vector2(); // create once
+
+        mouse.x = ( event.clientX / renderer.domElement.width ) * 2 - 1;
+        mouse.y = - ( event.clientY / renderer.domElement.height ) * 2 + 1;
+
+        raycaster.setFromCamera( mouse, camera );
+
+        var intersects = raycaster.intersectObjects( objects);        // Change color if hit block
+        if ( intersects.length > 0 ) {
+            var curObj = doors[intersects[0].object.userData.number-1];
+            var ud = curObj.userData;
+            if (ud.isMove == 0) {
+                if (intersects[0].point.x > intersects[0].object.position.x) {
+                    ud.direction = 1;
+                } else {
+                    ud.direction = -1;
+                }
+                var newX = ud.direction * cupboardWidth/curDoorsNumber + intersects[0].object.position.x;
+                if (Math.abs(newX) < cupboardWidth/2) {
+                    if (scheme[(ud.number+1)%2][ud.cell-1+ud.direction] == 0) {
+                        scheme[(ud.number+1)%2][ud.cell-1] = 0;
+                        ud.cell += ud.direction;
+                        scheme[(ud.number+1)%2][ud.cell-1] = ud.number;
+                        ud.x = curObj.position.x;
+                        ud.isMove = 1;
+                    }
+                }
+                else {
+                    console.log("out border");
+                }
+            } else {
+                ud.direction *= -1;
+            }
+        }
+
+    }
+
+    function screenShot() {
+        window.open( renderer.domElement.toDataURL("images/"), "Final");
+    }
+
+    function alertMessage( message )
+    {
+        alert( message );
+    }
+
+    function getElementByXpath(path) {
+        return document.evaluate(path, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+    }
+
+    function animate()
+    {
+        requestAnimationFrame( animate );
+        render();
+        update();
+    }
+
+    function update()
+    {
+        if ( keyboard.pressed("z") )
+        {
+            // do something
+        }
+        controls.update();
+        stats.update();
+    }
+
+
+    function render()
+    {
+        runDoor();
+        renderer.render( scene, camera );
+    }
+
+</script>
 
 </body>
 </html>

@@ -1,6 +1,8 @@
-body {
+body
+{
     font-family: Monospace;
-    background-color: #f0f0f0;
+    font-weight: bold;
+    background-color: #ccccff;
     margin: 0px;
     overflow: hidden;
 }
